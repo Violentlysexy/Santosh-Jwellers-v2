@@ -60,24 +60,22 @@
     }
 
     /* Print styles */
-    @media print {
-      body * {
-        visibility: hidden;
-      }
-      #printContainer, #printContainer * {
-        visibility: visible;
-      }
-      #printContainer {
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 100% !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        background: white !important;
-        color: black !important;
-        box-shadow: none !important;
-      }
+@media print {
+  header, nav, #ratesBar, .no-print, button, #tab-billing, #tab-history, #tab-sop, #tab-app-install, #tab-settings {
+    display: none !important;
+  }
+  html, body, main, .max-w-7xl, #tab-preview, div {
+    overflow: visible !important;
+    background: white !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  #printContainer {
+    display: block !important;
+    position: static !important;
+    margin: 0 auto !important;
+    width: 100% !important;
+  }
       .no-print {
         display: none !important;
       }
