@@ -54,11 +54,62 @@ jobs:
           }
           EOF
 
-      - name: Setup Capacitor Android
+      - name: Setup Capacitor Android & Inject Native PrintManager
         run: |
           npm install
           npx cap add android
           npx cap copy android
+
+          MAIN_ACT=$(find android/app/src/main/java -name "MainActivity.java" | head -n 1)
+          cat << 'EOF' > "$MAIN_ACT"
+          package com.swarnabill.pos;
+
+          import android.content.Context;
+          import android.os.Bundle;
+          import android.print.PrintAttributes;
+          import android.print.PrintDocumentAdapter;
+          import android.print.PrintManager;
+          import android.webkit.JavascriptInterface;
+          import android.webkit.WebView;
+          import android.webkit.WebViewClient;
+          import com.getcapacitor.BridgeActivity;
+
+          public class MainActivity extends BridgeActivity {
+              private WebView printWebView;
+
+              @Override
+              public void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  if (this.bridge != null && this.bridge.getWebView() != null) {
+                      this.bridge.getWebView().addJavascriptInterface(new NativePrintBridge(), "AndroidPrint");
+                  }
+              }
+
+              public class NativePrintBridge {
+                  @JavascriptInterface
+                  public void printHtml(final String htmlContent, final String jobName) {
+                      runOnUiThread(() -> {
+                          printWebView = new WebView(MainActivity.this);
+                          printWebView.getSettings().setJavaScriptEnabled(false);
+                          printWebView.setWebViewClient(new WebViewClient() {
+                              @Override
+                              public void onPageFinished(WebView view, String url) {
+                                  PrintManager printManager = (PrintManager) getSystemService(Context.PRINT_SERVICE);
+                                  String docName = (jobName != null && !jobName.isEmpty()) ? jobName : "SwarnaBill_Invoice";
+                                  PrintDocumentAdapter adapter = view.createPrintDocumentAdapter(docName);
+                                  PrintAttributes.Builder builder = new PrintAttributes.Builder();
+                                  builder.setMediaSize(PrintAttributes.MediaSize.ISO_A4);
+                                  if (printManager != null) {
+                                      printManager.print(docName, adapter, builder.build());
+                                  }
+                              }
+                          });
+                          printWebView.loadDataWithBaseURL("https://localhost/", htmlContent, "text/html", "UTF-8", null);
+                      });
+                  }
+              }
+          }
+          EOF
 
       - name: Compile APK with Gradle
         run: |
@@ -75,5 +126,5 @@ jobs:
         with:
           tag_name: v1.0.${{ github.run_number }}
           name: "SwarnaBill App v1.0.${{ github.run_number }}"
-          body: "Direct installable APK for OnePlus 13 / Android"
+          body: "Direct installable APK with Native Android PrintManager & Auto-Saved Bill Records"
           files: SwarnaBill.apk
