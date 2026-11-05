@@ -2463,40 +2463,7 @@
         const container = document.getElementById('printContainer');
         if (!container) return;
 
-        // Detect if running inside Android APK WebView (which lacks native print spooler)
-        const isApkWebView = /(wv|WebView|Capacitor)/i.test(navigator.userAgent) || (window.Capacitor !== undefined);
-        if (isApkWebView) {
-          try {
-            const payload = {
-              invoice: AppState.invoice,
-              shop: AppState.shopSettings,
-              mode: AppState.printMode
-            };
-            const encoded = encodeURIComponent(JSON.stringify(payload));
-            showToast('Bill saved! Opening system print spooler...');
-            window.location.href = "intent://violentlysexy.github.io/Santosh-Jwellers-v2/?autoprint=1&bill=" + encoded + "#Intent;scheme=https;package=com.android.chrome;end";
-            return;
-          } catch(e) {
-            console.log("Intent launch error:", e);
-          }
-        }
-
         const isThermal = (AppState.printMode === 'thermal');
-        let printFrame = document.getElementById('swarnaPrintIframe');
-        if (printFrame) printFrame.remove();
-
-        printFrame = document.createElement('iframe');
-        printFrame.id = 'swarnaPrintIframe';
-        printFrame.style.position = 'fixed';
-        printFrame.style.right = '0';
-        printFrame.style.bottom = '0';
-        printFrame.style.width = '0';
-        printFrame.style.height = '0';
-        printFrame.style.border = '0';
-        document.body.appendChild(printFrame);
-
-        const frameDoc = printFrame.contentWindow.document;
-        frameDoc.open();
         const fontFam = isThermal ? "'JetBrains Mono', monospace" : "system-ui, -apple-system, sans-serif";
         const pageSize = isThermal ? '80mm auto' : 'A4 portrait';
         const pageMargin = isThermal ? '2mm' : '8mm';
@@ -2525,11 +2492,36 @@
           '.bg-slate-50 { background-color: #f8fafc; } .bg-slate-100 { background-color: #f1f5f9; } ' +
           '.flex { display: flex; } .justify-between { justify-content: space-between; } .items-center { align-items: center; }';
 
-        frameDoc.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>SwarnaBill Receipt</title>' +
+        const fullPrintHtml = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>SwarnaBill_' + AppState.invoice.number + '</title>' +
           '<style>' + cssRules + '</style>' +
           '</' + 'head><body>' +
           container.innerHTML +
-          '</' + 'body></' + 'html>');
+          '</' + 'body></' + 'html>';
+
+        // 1. If Native Android Print Bridge is registered in the APK, invoke native Android PrintManager directly!
+        if (window.AndroidPrint && typeof window.AndroidPrint.printHtml === 'function') {
+          showToast('Opening Android Print Spooler...');
+          window.AndroidPrint.printHtml(fullPrintHtml, 'SwarnaBill_' + AppState.invoice.number);
+          return;
+        }
+
+        // 2. Standard Browser / Chrome Iframe Print + Direct window.print()
+        let printFrame = document.getElementById('swarnaPrintIframe');
+        if (printFrame) printFrame.remove();
+
+        printFrame = document.createElement('iframe');
+        printFrame.id = 'swarnaPrintIframe';
+        printFrame.style.position = 'fixed';
+        printFrame.style.right = '0';
+        printFrame.style.bottom = '0';
+        printFrame.style.width = '0';
+        printFrame.style.height = '0';
+        printFrame.style.border = '0';
+        document.body.appendChild(printFrame);
+
+        const frameDoc = printFrame.contentWindow.document;
+        frameDoc.open();
+        frameDoc.write(fullPrintHtml);
         frameDoc.close();
 
         setTimeout(() => {
@@ -2539,7 +2531,7 @@
           } catch(err) {
             window.print();
           }
-        }, 300);
+        }, 250);
       }
 
       document.getElementById('directPrintBtn').addEventListener('click', printInvoiceViaIframe);
@@ -2550,11 +2542,16 @@
         saveCurrentBill(true);
         const container = document.getElementById('printContainer');
         if (!container) return;
+
+        // If inside the Native APK with AndroidPrint bridge, open the Android Print Spooler (which has built-in "Save as PDF" at the top!)
+        if (window.AndroidPrint && typeof window.AndroidPrint.printHtml === 'function') {
+          printInvoiceViaIframe();
+          return;
+        }
+
         const isThermal = (AppState.printMode === 'thermal');
         const custName = (AppState.invoice.customer.name || 'Customer').replace(/[^a-zA-Z0-9]/g, '_');
         const filename = 'SwarnaBill_' + custName + '_' + AppState.invoice.number + '.pdf';
-
-        const isApkWebView = /(wv|WebView|Capacitor)/i.test(navigator.userAgent) || (window.Capacitor !== undefined);
 
         if (typeof html2pdf !== 'undefined') {
           showToast('Generating PDF & saving bill to records...');
@@ -2567,10 +2564,9 @@
           };
 
           try {
-            // If on mobile with Web Share API file support (works inside APK & mobile browsers!)
             const pdfBlob = await html2pdf().set(opt).from(container).outputPdf('blob');
             const pdfFile = new File([pdfBlob], filename, { type: 'application/pdf' });
-            if (isApkWebView && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+            if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
               await navigator.share({
                 files: [pdfFile],
                 title: filename,
@@ -2578,18 +2574,6 @@
               });
               return;
             }
-            if (isApkWebView) {
-              // Launch Chrome auto-PDF download intent with exact bill data
-              const payload = {
-                invoice: AppState.invoice,
-                shop: AppState.shopSettings,
-                mode: AppState.printMode
-              };
-              const encoded = encodeURIComponent(JSON.stringify(payload));
-              window.location.href = "intent://violentlysexy.github.io/Santosh-Jwellers-v2/?autopdf=1&bill=" + encoded + "#Intent;scheme=https;package=com.android.chrome;end";
-              return;
-            }
-            // Standard browser download
             const url = URL.createObjectURL(pdfBlob);
             const a = document.createElement('a');
             a.href = url;
@@ -2609,39 +2593,6 @@
       }
 
       document.getElementById('downloadPdfBtn').addEventListener('click', downloadInvoicePdf);
-
-      // Handle Incoming Auto-Print or Auto-PDF Intent from APK
-      try {
-        const urlParams = new URLSearchParams(window.location.search);
-        const billData = urlParams.get('bill');
-        if (billData) {
-          const parsed = JSON.parse(decodeURIComponent(billData));
-          if (parsed.invoice) AppState.invoice = parsed.invoice;
-          if (parsed.shop) AppState.shopSettings = parsed.shop;
-          if (parsed.mode) AppState.printMode = parsed.mode;
-          syncInvoiceToForm();
-          saveCurrentBill(true);
-        }
-        if (urlParams.get('autoprint') === '1' || window.location.hash === '#print') {
-          setTimeout(() => {
-            switchTab('tab-preview');
-            renderPreview();
-            setTimeout(() => {
-              printInvoiceViaIframe();
-            }, 400);
-          }, 300);
-        } else if (urlParams.get('autopdf') === '1') {
-          setTimeout(() => {
-            switchTab('tab-preview');
-            renderPreview();
-            setTimeout(() => {
-              downloadInvoicePdf();
-            }, 500);
-          }, 300);
-        }
-      } catch(err) {
-        console.warn('URL param parse warning:', err);
-      }
 
       // Rates Modal
       const ratesModal = document.getElementById('ratesModal');
