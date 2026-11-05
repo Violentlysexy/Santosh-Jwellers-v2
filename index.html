@@ -192,6 +192,7 @@
       <button class="nav-tab py-2.5 px-3 text-xs sm:text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-1.5 transition" data-tab="tab-history">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
         <span>Bill Records</span>
+        <span id="historyCountBadge" class="ml-1 px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-gold-100 text-gold-800 border border-gold-300">0</span>
       </button>
       <button class="nav-tab py-2.5 px-3 text-xs sm:text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-1.5 transition" data-tab="tab-workflow">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
@@ -545,8 +546,22 @@
           </div>
         </div>
 
+        <div class="grid grid-cols-3 gap-2 p-3 bg-slate-100 border-b border-slate-200 text-center">
+          <div class="bg-white p-2 rounded-lg border border-slate-200 shadow-2xs">
+            <span class="block text-[10px] uppercase font-bold text-slate-400">Total Saved Bills</span>
+            <span id="statTotalBills" class="text-sm font-bold text-slate-900">0</span>
+          </div>
+          <div class="bg-white p-2 rounded-lg border border-slate-200 shadow-2xs">
+            <span class="block text-[10px] uppercase font-bold text-slate-400">Total Revenue</span>
+            <span id="statTotalRevenue" class="text-sm font-bold text-emerald-700">₹0</span>
+          </div>
+          <div class="bg-white p-2 rounded-lg border border-slate-200 shadow-2xs">
+            <span class="block text-[10px] uppercase font-bold text-slate-400">Latest Bill</span>
+            <span id="statLatestBill" class="text-xs font-mono font-bold text-gold-700">-</span>
+          </div>
+        </div>
         <div class="p-3 border-b border-slate-200 bg-slate-50 flex items-center gap-2">
-          <input type="text" id="searchHistoryInput" placeholder="Search by customer name, phone, or invoice no..." class="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs outline-none">
+          <input type="text" id="searchHistoryInput" placeholder="Search by customer name, phone, item, or invoice no..." class="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs outline-none">
         </div>
 
         <div class="overflow-x-auto">
@@ -1871,17 +1886,18 @@
       `;
     }
 
-    // Save Current Bill to History
-    function saveCurrentBill() {
+    // Save Current Bill to History (Supports silent auto-save on print/PDF/WhatsApp & deduplication)
+    function saveCurrentBill(silent = false) {
+      recalculateTotals();
       if (AppState.invoice.items.length === 0) {
-        showToast('Please add at least one item before saving.');
-        return;
+        if (!silent) showToast('Please add at least one item before saving.');
+        return false;
       }
 
       // Gather customer data
       AppState.invoice.customer.name = document.getElementById('custName').value.trim() || 'Walk-in Customer';
       AppState.invoice.customer.mobile = document.getElementById('custMobile').value.trim() || 'N/A';
-      AppState.invoice.customer.address = document.getElementById('custAddress').value.trim() || 'Indore';
+      AppState.invoice.customer.address = document.getElementById('custAddress').value.trim() || 'Jabalpur';
       AppState.invoice.customer.pan = document.getElementById('custPan').value.trim().toUpperCase() || 'N/A';
       AppState.invoice.customer.staff = document.getElementById('staffName').value.trim() || 'Counter 1';
 
@@ -1892,33 +1908,58 @@
       const unrounded = Math.max(0, taxable + totalTax - (AppState.invoice.discount || 0));
       const grandTotal = Math.round(unrounded);
 
+      const existingIdx = AppState.history.findIndex(h => h.number === AppState.invoice.number);
       const record = {
-        id: 'rec_' + Date.now(),
+        id: existingIdx >= 0 ? AppState.history[existingIdx].id : ('rec_' + Date.now()),
         number: AppState.invoice.number,
         date: document.getElementById('invoiceDateTime').value || new Date().toISOString(),
         customer: { ...AppState.invoice.customer },
         itemsCount: AppState.invoice.items.length,
-        itemsSummary: AppState.invoice.items.map(it => `${it.description} (${it.netWt.toFixed(3)}g)`).join(', '),
+        itemsSummary: AppState.invoice.items.map(it => `${it.description || 'Ornament'} (${Number(it.netWt || 0).toFixed(3)}g)`).join(', '),
         grandTotal: grandTotal,
         invoiceSnapshot: JSON.parse(JSON.stringify(AppState.invoice))
       };
 
-      AppState.history.unshift(record);
+      if (existingIdx >= 0) {
+        AppState.history[existingIdx] = record;
+      } else {
+        AppState.history.unshift(record);
+      }
+
       persistData();
       renderHistoryTable();
-      showToast(`Invoice ${AppState.invoice.number} saved successfully!`);
+      if (!silent) {
+        showToast(`Invoice ${AppState.invoice.number} saved to Bill Records!`);
+      }
+      return true;
     }
 
-    // Render History Table
+    // Render History Table & Update Badges
     function renderHistoryTable(filterText = '') {
       const tbody = document.getElementById('historyTableBody');
+      const badge = document.getElementById('historyCountBadge');
+      if (badge) badge.textContent = AppState.history.length;
+
+      const statBills = document.getElementById('statTotalBills');
+      const statRev = document.getElementById('statTotalRevenue');
+      const statLatest = document.getElementById('statLatestBill');
+      if (statBills) statBills.textContent = AppState.history.length;
+      if (statRev) {
+        const totalRev = AppState.history.reduce((acc, h) => acc + (Number(h.grandTotal) || 0), 0);
+        statRev.textContent = formatINR(totalRev);
+      }
+      if (statLatest) {
+        statLatest.textContent = AppState.history.length > 0 ? AppState.history[0].number : '-';
+      }
+
       const filtered = AppState.history.filter(h => {
         if (!filterText) return true;
         const q = filterText.toLowerCase();
         return (
-          h.number.toLowerCase().includes(q) ||
-          h.customer.name.toLowerCase().includes(q) ||
-          h.customer.mobile.toLowerCase().includes(q)
+          (h.number && h.number.toLowerCase().includes(q)) ||
+          (h.customer && h.customer.name && h.customer.name.toLowerCase().includes(q)) ||
+          (h.customer && h.customer.mobile && h.customer.mobile.toLowerCase().includes(q)) ||
+          (h.itemsSummary && h.itemsSummary.toLowerCase().includes(q))
         );
       });
 
@@ -1926,7 +1967,7 @@
         tbody.innerHTML = `
           <tr>
             <td colspan="6" class="text-center py-6 text-slate-400 font-sans text-xs">
-              No saved invoice records found.
+              No saved invoice records found. Every printed or saved bill is automatically remembered here.
             </td>
           </tr>
         `;
@@ -1937,12 +1978,15 @@
         <tr class="hover:bg-slate-50 transition">
           <td class="px-3 py-2 font-bold text-slate-800">${h.number}</td>
           <td class="px-3 py-2 text-slate-500 text-[11px]">${new Date(h.date).toLocaleDateString('en-IN')}</td>
-          <td class="px-3 py-2 font-sans font-medium text-slate-900">${h.customer.name} (${h.customer.mobile})</td>
+          <td class="px-3 py-2 font-sans font-medium text-slate-900">${h.customer.name} <span class="text-slate-400 text-[10px]">(${h.customer.mobile})</span></td>
           <td class="px-3 py-2 font-sans text-slate-600 truncate max-w-[180px]">${h.itemsSummary}</td>
           <td class="px-3 py-2 text-right font-bold text-slate-950">${formatINR(h.grandTotal)}</td>
-          <td class="px-3 py-2 text-center">
+          <td class="px-3 py-2 text-center whitespace-nowrap">
             <button class="load-history-btn px-2 py-1 bg-royal-900 text-gold-300 rounded text-[10px] font-sans font-semibold hover:bg-slate-800 mr-1" data-id="${h.id}">
               Open & Print
+            </button>
+            <button class="delete-history-btn px-2 py-1 bg-rose-100 text-rose-700 rounded text-[10px] font-sans font-semibold hover:bg-rose-200" data-id="${h.id}" title="Delete Bill">
+              ✕
             </button>
           </td>
         </tr>
@@ -1959,6 +2003,16 @@
             renderPreview();
             showToast(`Loaded ${rec.number}`);
           }
+        });
+      });
+
+      document.querySelectorAll('.delete-history-btn').forEach(b => {
+        b.addEventListener('click', (e) => {
+          const recId = e.currentTarget.getAttribute('data-id');
+          AppState.history = AppState.history.filter(r => r.id !== recId);
+          persistData();
+          renderHistoryTable(document.getElementById('searchHistoryInput').value);
+          showToast('Bill record removed.');
         });
       });
     }
@@ -2120,6 +2174,7 @@
 
     // Send WhatsApp Bill
     function sendWhatsAppReceipt() {
+      saveCurrentBill(true);
       const c = AppState.invoice.customer;
       const mobile = document.getElementById('custMobile').value.trim();
       if (!mobile || mobile.length < 10) {
@@ -2218,6 +2273,7 @@
       loadSavedData();
       updateRatesDisplay();
       resetNewBill();
+      renderHistoryTable();
 
             // Install App Modal & Navigation
       const installHeaderBtn = document.getElementById('installAppHeaderBtn');
@@ -2403,14 +2459,22 @@
       // Direct Print & WhatsApp Buttons
       function printInvoiceViaIframe() {
         renderPreview();
+        saveCurrentBill(true);
         const container = document.getElementById('printContainer');
         if (!container) return;
 
-        // In Android APK/WebView, launch Chrome print intent
+        // Detect if running inside Android APK WebView (which lacks native print spooler)
         const isApkWebView = /(wv|WebView|Capacitor)/i.test(navigator.userAgent) || (window.Capacitor !== undefined);
         if (isApkWebView) {
           try {
-            window.location.href = "intent://violentlysexy.github.io/Santosh-Jwellers-v2/#print#Intent;scheme=https;package=com.android.chrome;end";
+            const payload = {
+              invoice: AppState.invoice,
+              shop: AppState.shopSettings,
+              mode: AppState.printMode
+            };
+            const encoded = encodeURIComponent(JSON.stringify(payload));
+            showToast('Bill saved! Opening system print spooler...');
+            window.location.href = "intent://violentlysexy.github.io/Santosh-Jwellers-v2/?autoprint=1&bill=" + encoded + "#Intent;scheme=https;package=com.android.chrome;end";
             return;
           } catch(e) {
             console.log("Intent launch error:", e);
@@ -2480,15 +2544,20 @@
 
       document.getElementById('directPrintBtn').addEventListener('click', printInvoiceViaIframe);
       document.getElementById('whatsappShareBtn').addEventListener('click', sendWhatsAppReceipt);
-      function downloadInvoicePdf() {
+
+      async function downloadInvoicePdf() {
         renderPreview();
+        saveCurrentBill(true);
         const container = document.getElementById('printContainer');
         if (!container) return;
         const isThermal = (AppState.printMode === 'thermal');
         const custName = (AppState.invoice.customer.name || 'Customer').replace(/[^a-zA-Z0-9]/g, '_');
-        const filename = 'SwarnaBill_' + custName + '_' + Date.now() + '.pdf';
-        
+        const filename = 'SwarnaBill_' + custName + '_' + AppState.invoice.number + '.pdf';
+
+        const isApkWebView = /(wv|WebView|Capacitor)/i.test(navigator.userAgent) || (window.Capacitor !== undefined);
+
         if (typeof html2pdf !== 'undefined') {
+          showToast('Generating PDF & saving bill to records...');
           const opt = {
             margin: isThermal ? [2, 2, 2, 2] : [6, 6, 6, 6],
             filename: filename,
@@ -2496,15 +2565,83 @@
             html2canvas: { scale: 2, useCORS: true, logging: false },
             jsPDF: { unit: 'mm', format: isThermal ? [80, 220] : 'a4', orientation: 'portrait' }
           };
-          html2pdf().set(opt).from(container).save();
+
+          try {
+            // If on mobile with Web Share API file support (works inside APK & mobile browsers!)
+            const pdfBlob = await html2pdf().set(opt).from(container).outputPdf('blob');
+            const pdfFile = new File([pdfBlob], filename, { type: 'application/pdf' });
+            if (isApkWebView && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+              await navigator.share({
+                files: [pdfFile],
+                title: filename,
+                text: 'SwarnaBill Official Invoice'
+              });
+              return;
+            }
+            if (isApkWebView) {
+              // Launch Chrome auto-PDF download intent with exact bill data
+              const payload = {
+                invoice: AppState.invoice,
+                shop: AppState.shopSettings,
+                mode: AppState.printMode
+              };
+              const encoded = encodeURIComponent(JSON.stringify(payload));
+              window.location.href = "intent://violentlysexy.github.io/Santosh-Jwellers-v2/?autopdf=1&bill=" + encoded + "#Intent;scheme=https;package=com.android.chrome;end";
+              return;
+            }
+            // Standard browser download
+            const url = URL.createObjectURL(pdfBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 5000);
+            showToast('PDF Downloaded & Bill Saved!');
+          } catch (err) {
+            console.warn('PDF generation fallback:', err);
+            printInvoiceViaIframe();
+          }
         } else {
-          // Fallback if script blocked: trigger print which offers Save as PDF
           printInvoiceViaIframe();
         }
       }
 
       document.getElementById('downloadPdfBtn').addEventListener('click', downloadInvoicePdf);
 
+      // Handle Incoming Auto-Print or Auto-PDF Intent from APK
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const billData = urlParams.get('bill');
+        if (billData) {
+          const parsed = JSON.parse(decodeURIComponent(billData));
+          if (parsed.invoice) AppState.invoice = parsed.invoice;
+          if (parsed.shop) AppState.shopSettings = parsed.shop;
+          if (parsed.mode) AppState.printMode = parsed.mode;
+          syncInvoiceToForm();
+          saveCurrentBill(true);
+        }
+        if (urlParams.get('autoprint') === '1' || window.location.hash === '#print') {
+          setTimeout(() => {
+            switchTab('tab-preview');
+            renderPreview();
+            setTimeout(() => {
+              printInvoiceViaIframe();
+            }, 400);
+          }, 300);
+        } else if (urlParams.get('autopdf') === '1') {
+          setTimeout(() => {
+            switchTab('tab-preview');
+            renderPreview();
+            setTimeout(() => {
+              downloadInvoicePdf();
+            }, 500);
+          }, 300);
+        }
+      } catch(err) {
+        console.warn('URL param parse warning:', err);
+      }
 
       // Rates Modal
       const ratesModal = document.getElementById('ratesModal');
