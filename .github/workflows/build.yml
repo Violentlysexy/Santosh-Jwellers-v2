@@ -1,0 +1,79 @@
+name: Build SwarnaBill APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup App Directory & Config
+        run: |
+          mkdir -p www
+          cp -r index.html manifest.json icon-192.png icon-512.png www/ 2>/dev/null || true
+          [ -f sw.js ] && cp sw.js www/ || true
+
+          cat << 'EOF' > package.json
+          {
+            "name": "swarnabill-app",
+            "version": "1.0.0",
+            "dependencies": {
+              "@capacitor/core": "^6.0.0",
+              "@capacitor/cli": "^6.0.0",
+              "@capacitor/android": "^6.0.0"
+            }
+          }
+          EOF
+
+          cat << 'EOF' > capacitor.config.json
+          {
+            "appId": "com.swarnabill.pos",
+            "appName": "SwarnaBill",
+            "webDir": "www",
+            "bundledWebRuntime": false
+          }
+          EOF
+
+      - name: Setup Capacitor Android
+        run: |
+          npm install
+          npx cap add android
+          npx cap copy android
+
+      - name: Compile APK with Gradle
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Prepare APK File
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk SwarnaBill.apk
+
+      - name: Upload to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: "SwarnaBill App v1.0.${{ github.run_number }}"
+          body: "Direct installable APK for OnePlus 13 / Android"
+          files: SwarnaBill.apk
