@@ -47,7 +47,7 @@
         </div>
         <div>
           <h1 id="topbarBrandName" class="serif-brand font-bold text-lg md:text-xl tracking-wider text-amber-200 uppercase leading-none">AMIT SANTOSH JWELLERS</h1>
-          <p class="text-xs text-amber-400/80 font-medium tracking-wide">818, Sarafa Bazaar, Jabalpur (M.P.)</p>
+          <p id="topbarAddress" class="text-xs text-amber-400/80 font-medium tracking-wide">818, Sarafa Bazaar, Jabalpur (M.P.)</p>
         </div>
       </div>
       <div class="flex items-center gap-2">
@@ -334,9 +334,9 @@
 
   </main>
 
-  <!-- ================= WHATSAPP SHARE MODAL (NEW FEATURE) ================= -->
+  <!-- ================= WHATSAPP SHARE MODAL ================= -->
   <div id="whatsappModal" class="fixed inset-0 bg-slate-900/70 z-50 flex items-center justify-center p-4 hidden">
-    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 animate-in fade-in zoom-in duration-200">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200">
       <div class="bg-gradient-to-r from-emerald-600 to-teal-700 text-white p-4 flex items-center justify-between">
         <div class="flex items-center gap-2.5">
           <div class="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center text-lg">
@@ -442,7 +442,11 @@
         </div>
         <div>
           <label class="block text-slate-600 mb-1 font-semibold">Address</label>
-          <input type="text" id="settingShopAddress" value="818, Sarafa Bazaar, Jabalpur (M.P.)" class="w-full border rounded p-2 text-sm">
+          <input type="text" id="settingShopAddress" value="818, Sarafa Bazaar, Jabalpur (M.P.) - 482002" class="w-full border rounded p-2 text-sm">
+        </div>
+        <div>
+          <label class="block text-slate-600 mb-1 font-semibold">Default City for Customer Bills</label>
+          <input type="text" id="settingDefaultCity" value="818, Sarafa Bazaar, Jabalpur" class="w-full border rounded p-2 text-sm">
         </div>
         <div>
           <label class="block text-slate-600 mb-1 font-semibold">Phone Numbers</label>
@@ -475,12 +479,13 @@
 
   <!-- JAVASCRIPT APPLICATION CODE -->
   <script>
-    // GLOBAL APPLICATION STATE
+    // PERMANENT APPLICATION STATE - AMIT SANTOSH JWELLERS, JABALPUR
     const AppState = {
       rates: { gold24k: 7850, gold22k: 7250, gold18k: 5910, silver: 96.0 },
       shopSettings: {
         name: "AMIT SANTOSH JWELLERS",
         address: "818, Sarafa Bazaar, Jabalpur (M.P.) - 482002",
+        defaultCity: "818, Sarafa Bazaar, Jabalpur",
         phone: "+91 94251 54321 / 0761-2401234",
         upi: "amitsantoshjewellers@okaxis",
         bank: "State Bank of India, A/C: 30987654321, IFSC: SBIN0000394, Sarafa Branch, Jabalpur",
@@ -496,7 +501,7 @@
         oldExchange: { enabled: false, grossWt: 0, purityPct: 90, rate: 6800, total: 0 },
         payment: { subtotal: 0, oldDeduction: 0, gst: 0, grandTotal: 0, mode: "UPI / QR Code", paid: 0, balance: 0 }
       },
-      printTemplate: "thermal", // "thermal" or "a4"
+      printTemplate: "thermal",
       records: []
     };
 
@@ -571,11 +576,13 @@
       btnSaveSettings: document.getElementById('btnSaveSettings'),
       settingShopName: document.getElementById('settingShopName'),
       settingShopAddress: document.getElementById('settingShopAddress'),
+      settingDefaultCity: document.getElementById('settingDefaultCity'),
       settingShopPhone: document.getElementById('settingShopPhone'),
       settingShopUpi: document.getElementById('settingShopUpi'),
       settingShopBank: document.getElementById('settingShopBank'),
       settingShopTerms: document.getElementById('settingShopTerms'),
       topbarBrandName: document.getElementById('topbarBrandName'),
+      topbarAddress: document.getElementById('topbarAddress'),
       
       recordsTableContainer: document.getElementById('recordsTableContainer'),
       recordSearch: document.getElementById('recordSearch'),
@@ -586,14 +593,21 @@
       toastMsg: document.getElementById('toastMsg')
     };
 
-    // INITIALIZATION & AUTO-MIGRATION
+    // INITIALIZATION & ACTIVE PERSISTENCE
     function initApp() {
+      // 1. Purge legacy obsolete keys completely
+      try {
+        const legacyKeys = ['swarna_settings', 'swarna_records', 'swarna_rates', 'swarna_data', 'swarna_active_draft'];
+        legacyKeys.forEach(k => localStorage.removeItem(k));
+      } catch (e) {}
+
+      // 2. Load stored user customizations
       loadSavedData();
-      generateNewInvoiceNumber();
-      setDefaultDateTime();
-      if (AppState.currentInvoice.items.length === 0) {
-        addItemRow({ name: "Gold Ring 22K (916)", metal: "Gold 22K (916)", grossWt: 5.250, stoneWt: 0.150, makingType: "per_gram", makingRate: 650 });
-      }
+      
+      // 3. Restore active draft or start clean
+      restoreDraftOrNew();
+
+      // 4. Update UI
       recalculateAll();
       setupEventListeners();
     }
@@ -607,27 +621,16 @@
         }
         updateRateDisplay();
 
-        // Shop Settings & Migration
-        let savedSettings = localStorage.getItem('asj_shop_settings') || localStorage.getItem('swarna_settings');
+        // Shop Settings
+        const savedSettings = localStorage.getItem('asj_shop_settings');
         if (savedSettings) {
-          let parsed = JSON.parse(savedSettings);
-          // Auto migrate if it contains old Indore or Swarna
-          if (JSON.stringify(parsed).toUpperCase().includes('SWARNA') || JSON.stringify(parsed).toUpperCase().includes('INDORE')) {
-            parsed.name = "AMIT SANTOSH JWELLERS";
-            parsed.address = "818, Sarafa Bazaar, Jabalpur (M.P.) - 482002";
-            parsed.phone = "+91 94251 54321 / 0761-2401234";
-            parsed.upi = "amitsantoshjewellers@okaxis";
-            parsed.bank = "State Bank of India, A/C: 30987654321, IFSC: SBIN0000394, Sarafa Branch, Jabalpur";
-            parsed.terms = "Subject to Jabalpur jurisdiction only.";
-            localStorage.setItem('asj_shop_settings', JSON.stringify(parsed));
-            localStorage.setItem('swarna_settings', JSON.stringify(parsed));
-          }
+          const parsed = JSON.parse(savedSettings);
           AppState.shopSettings = Object.assign(AppState.shopSettings, parsed);
         }
         syncSettingsInputs();
 
         // Saved Records
-        const savedRec = localStorage.getItem('asj_records') || localStorage.getItem('swarna_records');
+        const savedRec = localStorage.getItem('asj_records');
         if (savedRec) {
           AppState.records = JSON.parse(savedRec);
         }
@@ -640,11 +643,13 @@
     function syncSettingsInputs() {
       dom.settingShopName.value = AppState.shopSettings.name;
       dom.settingShopAddress.value = AppState.shopSettings.address;
+      dom.settingDefaultCity.value = AppState.shopSettings.defaultCity || "818, Sarafa Bazaar, Jabalpur";
       dom.settingShopPhone.value = AppState.shopSettings.phone;
       dom.settingShopUpi.value = AppState.shopSettings.upi;
       dom.settingShopBank.value = AppState.shopSettings.bank;
       dom.settingShopTerms.value = AppState.shopSettings.terms;
       dom.topbarBrandName.textContent = AppState.shopSettings.name;
+      dom.topbarAddress.textContent = AppState.shopSettings.address;
     }
 
     function updateRateDisplay() {
@@ -654,6 +659,73 @@
       document.getElementById('rateSilverText').textContent = '₹' + AppState.rates.silver.toFixed(2);
     }
 
+    // PERSIST USER DRAFT SO IT NEVER GETS REVERTED
+    function saveActiveDraft() {
+      try {
+        const draft = {
+          invNumber: dom.displayInvNumber.textContent,
+          custName: dom.custName.value,
+          custPhone: dom.custPhone.value,
+          custAddress: dom.custAddress.value,
+          custPan: dom.custPan.value,
+          invDateTime: dom.invDateTime.value,
+          staffName: dom.staffName.value,
+          items: AppState.currentInvoice.items,
+          chkOldExchange: dom.chkOldExchange.checked,
+          oldGrossWt: dom.oldGrossWt.value,
+          oldPurityPct: dom.oldPurityPct.value,
+          oldRate: dom.oldRate.value,
+          paymentMode: dom.paymentMode.value,
+          amtPaid: dom.amtPaid.value
+        };
+        localStorage.setItem('asj_active_draft', JSON.stringify(draft));
+      } catch (e) {}
+    }
+
+    function restoreDraftOrNew() {
+      try {
+        const savedDraft = localStorage.getItem('asj_active_draft');
+        if (savedDraft) {
+          const draft = JSON.parse(savedDraft);
+          dom.displayInvNumber.textContent = draft.invNumber || generateNewInvoiceNumber();
+          AppState.currentInvoice.number = dom.displayInvNumber.textContent;
+          dom.custName.value = draft.custName || '';
+          dom.custPhone.value = draft.custPhone || '';
+          dom.custAddress.value = draft.custAddress || AppState.shopSettings.defaultCity;
+          dom.custPan.value = draft.custPan || '';
+          dom.invDateTime.value = draft.invDateTime || getDefaultDateTime();
+          dom.staffName.value = draft.staffName || 'Counter 1 - Amit';
+          
+          if (draft.items && draft.items.length > 0) {
+            AppState.currentInvoice.items = draft.items;
+            renderItemRows();
+          } else {
+            initDefaultItem();
+          }
+
+          dom.chkOldExchange.checked = !!draft.chkOldExchange;
+          if (dom.chkOldExchange.checked) dom.oldExchangeFields.classList.remove('hidden');
+          dom.oldGrossWt.value = draft.oldGrossWt || 0;
+          dom.oldPurityPct.value = draft.oldPurityPct || 90;
+          dom.oldRate.value = draft.oldRate || 6800;
+          dom.paymentMode.value = draft.paymentMode || 'UPI / QR Code';
+          dom.amtPaid.value = draft.amtPaid || '';
+          return;
+        }
+      } catch (e) {}
+
+      // Fresh initialization
+      generateNewInvoiceNumber();
+      dom.invDateTime.value = getDefaultDateTime();
+      dom.custAddress.value = AppState.shopSettings.defaultCity;
+      initDefaultItem();
+    }
+
+    function initDefaultItem() {
+      AppState.currentInvoice.items = [];
+      addItemRow({ name: "Gold Ring 22K (916)", metal: "Gold 22K (916)", grossWt: 5.250, stoneWt: 0.150, makingType: "per_gram", makingRate: 650 });
+    }
+
     function generateNewInvoiceNumber() {
       const now = new Date();
       const datePart = now.getFullYear().toString() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0');
@@ -661,13 +733,13 @@
       const invNo = `ASJ-${datePart}-${seq}`;
       AppState.currentInvoice.number = invNo;
       dom.displayInvNumber.textContent = invNo;
+      return invNo;
     }
 
-    function setDefaultDateTime() {
+    function getDefaultDateTime() {
       const now = new Date();
       now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-      dom.invDateTime.value = now.toISOString().slice(0, 16);
-      AppState.currentInvoice.dateTime = dom.invDateTime.value;
+      return now.toISOString().slice(0, 16);
     }
 
     function showToast(msg) {
@@ -729,12 +801,14 @@
       AppState.currentInvoice.items.push(item);
       renderItemRows();
       recalculateAll();
+      saveActiveDraft();
     }
 
     function removeItemRow(id) {
       AppState.currentInvoice.items = AppState.currentInvoice.items.filter(it => it.id !== id);
       renderItemRows();
       recalculateAll();
+      saveActiveDraft();
     }
 
     function renderItemRows() {
@@ -799,6 +873,7 @@
       if (it) {
         it[field] = value;
         recalculateAll();
+        saveActiveDraft();
       }
     }
 
@@ -813,6 +888,7 @@
         else if (metal.includes('Silver')) it.rate = AppState.rates.silver;
         renderItemRows();
         recalculateAll();
+        saveActiveDraft();
       }
     }
 
@@ -932,7 +1008,7 @@
           </div>
           <div class="py-2 border-b border-dashed border-slate-400 text-[10px] space-y-0.5">
             <div class="flex justify-between font-bold"><span>BILL NO:</span><span>${inv.number}</span></div>
-            <div class="flex justify-between"><span>DATE:</span><span>${inv.dateTime.replace('T', ' ')}</span></div>
+            <div class="flex justify-between"><span>DATE:</span><span>${(dom.invDateTime.value || '').replace('T', ' ')}</span></div>
             <div class="flex justify-between font-bold"><span>CUSTOMER:</span><span>${dom.custName.value || 'Walk-in Customer'}</span></div>
             <div class="flex justify-between"><span>PHONE:</span><span>${dom.custPhone.value || '-'}</span></div>
             <div class="flex justify-between"><span>ADDR:</span><span class="truncate max-w-[180px]">${dom.custAddress.value}</span></div>
@@ -967,7 +1043,7 @@
             </div>
           </div>
           <div class="text-center pt-3 text-[9px] text-slate-500 border-t border-dashed border-slate-400 mt-2">
-            <p class="font-bold text-slate-800">Thank you for visiting Amit Santosh Jewellers!</p>
+            <p class="font-bold text-slate-800">Thank you for visiting ${shop.name}!</p>
             <p>${shop.terms}</p>
           </div>
         `;
@@ -986,7 +1062,7 @@
             <div class="text-right">
               <span class="inline-block bg-slate-900 text-amber-200 text-xs font-extrabold px-3 py-1 rounded tracking-wider uppercase">TAX INVOICE</span>
               <p class="text-xs font-bold text-slate-800 mt-2 font-mono">Invoice No: ${inv.number}</p>
-              <p class="text-[11px] text-slate-600 font-mono">Date: ${inv.dateTime.replace('T', ' ')}</p>
+              <p class="text-[11px] text-slate-600 font-mono">Date: ${(dom.invDateTime.value || '').replace('T', ' ')}</p>
               <p class="text-[11px] text-slate-600">Place of Supply: Madhya Pradesh (23)</p>
             </div>
           </div>
@@ -1070,13 +1146,13 @@
       return await html2pdf().set(opt).from(element).output('blob');
     }
 
-    // WHATSAPP BILL SHARING HANDLER (NEW CORE FEATURE)
+    // WHATSAPP BILL SHARING HANDLER
     async function handleSendWhatsappPdf() {
       const phoneInput = dom.whatsappRecipientPhone.value.trim().replace(/\D/g, '');
       const custName = dom.custName.value.trim() || 'Valued Customer';
       const invNo = AppState.currentInvoice.number;
       const total = AppState.currentInvoice.payment.grandTotal.toLocaleString('en-IN');
-      const shareText = `Namaste ${custName}, please find attached your Tax Invoice ${invNo} from AMIT SANTOSH JWELLERS, 818 Sarafa Bazaar, Jabalpur. Grand Total: ₹${total}. Thank you for your business!`;
+      const shareText = `Namaste ${custName}, please find attached your Tax Invoice ${invNo} from ${AppState.shopSettings.name}, ${AppState.shopSettings.address}. Grand Total: ₹${total}. Thank you for your business!`;
 
       dom.whatsappStatusMsg.classList.remove('hidden');
       dom.whatsappStatusMsg.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Generating official PDF bill...';
@@ -1085,19 +1161,17 @@
         const pdfBlob = await generatePdfBlob();
         const pdfFile = new File([pdfBlob], `${invNo}.pdf`, { type: 'application/pdf' });
 
-        // Check if Web Share API with files is supported (Works on Android mobile / Chrome / Capacitor)
         if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
           dom.whatsappStatusMsg.innerHTML = '<i class="fa-solid fa-check mr-1 text-emerald-600"></i> Opening share sheet... Select WhatsApp';
           await navigator.share({
             files: [pdfFile],
-            title: `Tax Invoice ${invNo} - Amit Santosh Jwellers`,
+            title: `Tax Invoice ${invNo} - ${AppState.shopSettings.name}`,
             text: shareText
           });
           dom.whatsappModal.classList.add('hidden');
           showToast("Bill PDF shared successfully!");
         } else {
-          // Fallback if browser doesn't support direct file sharing via Web Share:
-          // 1. Trigger direct download of the PDF file
+          // Direct download fallback + open WhatsApp
           const url = URL.createObjectURL(pdfBlob);
           const a = document.createElement('a');
           a.href = url;
@@ -1107,7 +1181,6 @@
           document.body.removeChild(a);
           URL.revokeObjectURL(url);
 
-          // 2. Open WhatsApp chat with prefilled message
           dom.whatsappStatusMsg.innerHTML = '<i class="fa-solid fa-circle-info mr-1 text-blue-600"></i> PDF downloaded! Opening WhatsApp chat...';
           setTimeout(() => {
             const targetPhone = phoneInput.length === 10 ? '91' + phoneInput : phoneInput;
@@ -1135,7 +1208,7 @@
       const total = AppState.currentInvoice.payment.grandTotal.toLocaleString('en-IN');
       const itemsList = AppState.currentInvoice.items.map(it => `• ${it.name} (${it.metal}) - ${it.netWt.toFixed(3)}g @ ₹${Math.round(it.rate)} = ₹${Math.round(it.total).toLocaleString('en-IN')}`).join('\n');
 
-      const message = `🧾 *AMIT SANTOSH JWELLERS*\n818, Sarafa Bazaar, Jabalpur (M.P.)\nTel: +91 94251 54321\n--------------------------------\n*TAX INVOICE:* ${invNo}\n*Customer:* ${custName}\n*Date:* ${AppState.currentInvoice.dateTime.replace('T', ' ')}\n--------------------------------\n*Items Purchased:*\n${itemsList}\n--------------------------------\n*Subtotal:* ₹${Math.round(AppState.currentInvoice.payment.subtotal).toLocaleString('en-IN')}\n*GST (3%):* ₹${Math.round(AppState.currentInvoice.payment.gst).toLocaleString('en-IN')}\n*GRAND TOTAL:* ₹${total}\n--------------------------------\nThank you for shopping with us!\n_Subject to Jabalpur jurisdiction only._`;
+      const message = `🧾 *${AppState.shopSettings.name}*\n${AppState.shopSettings.address}\nTel: ${AppState.shopSettings.phone}\n--------------------------------\n*TAX INVOICE:* ${invNo}\n*Customer:* ${custName}\n*Date:* ${(dom.invDateTime.value || '').replace('T', ' ')}\n--------------------------------\n*Items Purchased:*\n${itemsList}\n--------------------------------\n*Subtotal:* ₹${Math.round(AppState.currentInvoice.payment.subtotal).toLocaleString('en-IN')}\n*GST (3%):* ₹${Math.round(AppState.currentInvoice.payment.gst).toLocaleString('en-IN')}\n*GRAND TOTAL:* ₹${total}\n--------------------------------\nThank you for shopping with us!\n_${AppState.shopSettings.terms}_`;
 
       const targetPhone = phoneInput.length === 10 ? '91' + phoneInput : phoneInput;
       const waUrl = targetPhone ? `https://wa.me/${targetPhone}?text=${encodeURIComponent(message)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
@@ -1144,16 +1217,14 @@
       showToast("WhatsApp opened with bill text!");
     }
 
-    // DIRECT PRINTING (PHONE / THERMAL / SYSTEM)
+    // DIRECT PRINTING
     function printInvoice() {
       showToast("Opening system print spooler...");
       renderInvoicePreview();
-      // If Android Native Print Interface is injected in APK
       if (window.AndroidPrint && typeof window.AndroidPrint.printHtml === 'function') {
         window.AndroidPrint.printHtml(dom.printContainer.innerHTML);
         return;
       }
-      // Standard Browser Print
       setTimeout(() => {
         window.print();
       }, 300);
@@ -1196,6 +1267,7 @@
       AppState.currentInvoice.customer.address = dom.custAddress.value.trim();
       AppState.currentInvoice.customer.pan = dom.custPan.value.trim();
       AppState.currentInvoice.staff = dom.staffName.value.trim();
+      AppState.currentInvoice.dateTime = dom.invDateTime.value;
 
       const recordToSave = JSON.parse(JSON.stringify(AppState.currentInvoice));
       AppState.records.unshift(recordToSave);
@@ -1276,31 +1348,41 @@
       dom.tabBtnRecords.addEventListener('click', () => switchTab('records'));
       dom.tabBtnGuide.addEventListener('click', () => switchTab('guide'));
 
+      // Live draft auto-save on input
+      ['custName', 'custPhone', 'custAddress', 'custPan', 'invDateTime', 'staffName', 'paymentMode'].forEach(id => {
+        dom[id].addEventListener('input', saveActiveDraft);
+        dom[id].addEventListener('change', saveActiveDraft);
+      });
+
       dom.btnAddItem.addEventListener('click', () => addItemRow());
       dom.chkOldExchange.addEventListener('change', (e) => {
         if (e.target.checked) dom.oldExchangeFields.classList.remove('hidden');
         else dom.oldExchangeFields.classList.add('hidden');
         recalculateAll();
+        saveActiveDraft();
       });
 
-      dom.oldGrossWt.addEventListener('input', recalculateAll);
-      dom.oldPurityPct.addEventListener('input', recalculateAll);
-      dom.oldRate.addEventListener('input', recalculateAll);
-      dom.amtPaid.addEventListener('input', recalculateAll);
+      dom.oldGrossWt.addEventListener('input', () => { recalculateAll(); saveActiveDraft(); });
+      dom.oldPurityPct.addEventListener('input', () => { recalculateAll(); saveActiveDraft(); });
+      dom.oldRate.addEventListener('input', () => { recalculateAll(); saveActiveDraft(); });
+      dom.amtPaid.addEventListener('input', () => { recalculateAll(); saveActiveDraft(); });
 
       dom.btnSaveBill.addEventListener('click', saveCurrentBill);
       dom.btnGoPreview.addEventListener('click', () => switchTab('print'));
+      
+      // NEW BILL - Uses current user's default city, NEVER reverts to old hardcoded city
       dom.btnNewBillTop.addEventListener('click', () => {
         generateNewInvoiceNumber();
-        setDefaultDateTime();
+        dom.invDateTime.value = getDefaultDateTime();
         dom.custName.value = '';
         dom.custPhone.value = '';
         dom.custPan.value = '';
-        dom.custAddress.value = '818, Sarafa Bazaar, Jabalpur';
-        AppState.currentInvoice.items = [];
-        addItemRow();
+        dom.custAddress.value = AppState.shopSettings.defaultCity || "818, Sarafa Bazaar, Jabalpur";
+        initDefaultItem();
+        recalculateAll();
+        saveActiveDraft();
         switchTab('billing');
-        showToast("Started fresh bill with Jabalpur defaults");
+        showToast("New bill initialized with Jabalpur defaults");
       });
 
       // Templates Switch
@@ -1352,23 +1434,26 @@
         showToast("Market rates updated!");
       });
 
-      // Settings Modal
+      // Settings Modal - Persists all custom changes immediately
       dom.btnSettings.addEventListener('click', () => dom.settingsModal.classList.remove('hidden'));
       dom.btnCloseSettingsModal.addEventListener('click', () => dom.settingsModal.classList.add('hidden'));
       dom.btnSaveSettings.addEventListener('click', () => {
         AppState.shopSettings.name = dom.settingShopName.value.trim() || AppState.shopSettings.name;
         AppState.shopSettings.address = dom.settingShopAddress.value.trim() || AppState.shopSettings.address;
+        AppState.shopSettings.defaultCity = dom.settingDefaultCity.value.trim() || AppState.shopSettings.defaultCity;
         AppState.shopSettings.phone = dom.settingShopPhone.value.trim() || AppState.shopSettings.phone;
         AppState.shopSettings.upi = dom.settingShopUpi.value.trim() || AppState.shopSettings.upi;
         AppState.shopSettings.bank = dom.settingShopBank.value.trim() || AppState.shopSettings.bank;
         AppState.shopSettings.terms = dom.settingShopTerms.value.trim() || AppState.shopSettings.terms;
+        
         try {
           localStorage.setItem('asj_shop_settings', JSON.stringify(AppState.shopSettings));
-          localStorage.setItem('swarna_settings', JSON.stringify(AppState.shopSettings));
         } catch (e) {}
+
         dom.topbarBrandName.textContent = AppState.shopSettings.name;
+        dom.topbarAddress.textContent = AppState.shopSettings.address;
         dom.settingsModal.classList.add('hidden');
-        showToast("Shop details saved!");
+        showToast("Shop details permanently saved!");
       });
 
       // Export CSV
