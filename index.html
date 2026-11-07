@@ -1194,47 +1194,64 @@
       const invNo = AppState.currentInvoice.number;
       const total = AppState.currentInvoice.payment.grandTotal.toLocaleString('en-IN');
       const shareText = `Namaste ${custName}, please find attached your Tax Invoice ${invNo} from ${AppState.shopSettings.name}, ${AppState.shopSettings.address}. Grand Total: ₹${total}. Thank you for your business!`;
+      const fileName = `${invNo}.pdf`;
 
       dom.whatsappStatusMsg.classList.remove('hidden');
       dom.whatsappStatusMsg.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Generating official PDF bill...';
 
       try {
         const pdfBlob = await generatePdfBlob();
-        const pdfFile = new File([pdfBlob], `${invNo}.pdf`, { type: 'application/pdf' });
 
+        // 1. Native Android APK File Provider bridge
+        if (window.AndroidPrint && typeof window.AndroidPrint.sharePdfBase64 === 'function') {
+          const reader = new FileReader();
+          reader.onloadend = function() {
+            const base64Data = (reader.result || '').split(',')[1];
+            if (base64Data) {
+              window.AndroidPrint.sharePdfBase64(base64Data, fileName, shareText);
+              dom.whatsappModal.classList.add('hidden');
+              showToast("Opening WhatsApp with attached PDF...");
+            }
+          };
+          reader.readAsDataURL(pdfBlob);
+          return;
+        }
+
+        // 2. Mobile Browser Web Share API with File
+        const pdfFile = new File([pdfBlob], fileName, { type: 'application/pdf' });
         if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
-          dom.whatsappStatusMsg.innerHTML = '<i class="fa-solid fa-check mr-1 text-emerald-600"></i> Opening share sheet... Select WhatsApp';
           await navigator.share({
             files: [pdfFile],
-            title: `Tax Invoice ${invNo} - ${AppState.shopSettings.name}`,
-            text: shareText
+            title: `Bill ${invNo}`
           });
           dom.whatsappModal.classList.add('hidden');
-          showToast("Bill PDF shared successfully!");
-        } else {
-          // Direct download fallback + open WhatsApp
-          const url = URL.createObjectURL(pdfBlob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `${invNo}.pdf`;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-
-          dom.whatsappStatusMsg.innerHTML = '<i class="fa-solid fa-circle-info mr-1 text-blue-600"></i> PDF downloaded! Opening WhatsApp chat...';
-          setTimeout(() => {
-            const targetPhone = phoneInput.length === 10 ? '91' + phoneInput : phoneInput;
-            const waUrl = targetPhone ? `https://wa.me/${targetPhone}?text=${encodeURIComponent(shareText)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`;
-            window.open(waUrl, '_blank');
-            dom.whatsappModal.classList.add('hidden');
-            showToast("PDF downloaded! Attach it in WhatsApp by tapping Document.");
-          }, 800);
+          showToast("Bill PDF sent to WhatsApp!");
+          return;
         }
+
+        // 3. Web Browser Fallback: Download PDF & open WhatsApp
+        const url = URL.createObjectURL(pdfBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        dom.whatsappStatusMsg.innerHTML = '<i class="fa-solid fa-circle-info mr-1 text-blue-600"></i> PDF downloaded! Opening WhatsApp...';
+        setTimeout(() => {
+          const targetPhone = phoneInput.length === 10 ? '91' + phoneInput : phoneInput;
+          const waUrl = targetPhone ? `https://wa.me/${targetPhone}?text=${encodeURIComponent(shareText)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`;
+          window.open(waUrl, '_blank');
+          dom.whatsappModal.classList.add('hidden');
+          showToast("PDF downloaded! Attach it in WhatsApp by tapping Document.");
+        }, 600);
+
       } catch (err) {
         if (err.name !== 'AbortError') {
           console.error("WhatsApp PDF sharing error:", err);
-          showToast("Could not share PDF directly. Downloading file instead.");
+          showToast("Downloading PDF file instead...");
           downloadInvoicePdf();
         }
       } finally {
@@ -1278,13 +1295,23 @@ _${AppState.shopSettings.terms}_`;
     function printInvoice() {
       showToast("Opening system print spooler...");
       renderInvoicePreview();
+      
+      // Native Android APK PrintManager
       if (window.AndroidPrint && typeof window.AndroidPrint.printHtml === 'function') {
-        window.AndroidPrint.printHtml(dom.printContainer.innerHTML);
+        const isThermal = AppState.printTemplate === 'thermal';
+        const billHtml = dom.printContainer.innerHTML;
+        const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Bill</title><style>
+          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 10px; color: #000; }
+          table { width: 100%; border-collapse: collapse; }
+          th, td { padding: 4px; }
+          @page { margin: 4mm; size: ${isThermal ? '80mm 200mm' : 'auto'}; }
+        </style></head><body>${billHtml}</body></html>`;
+        window.AndroidPrint.printHtml(fullHtml);
         return;
       }
-      setTimeout(() => {
-        window.print();
-      }, 300);
+
+      // Direct synchronous print call for mobile browsers (maintains user gesture)
+      window.print();
     }
 
     // DIRECT PDF DOWNLOAD
