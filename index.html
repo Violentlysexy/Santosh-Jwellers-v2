@@ -3,7 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Amit Santosh Jewellers - Mobile Billing & Printing System</title>
+  <title>Amit Santosh Jewelers - Mobile Billing & Printing System</title>
+  <meta name="application-name" content="Amit Santosh Jewelers">
+  <meta name="apple-mobile-web-app-title" content="Amit Santosh Jewelers">
+  <link rel="manifest" href="manifest.json">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#0f172a">
@@ -192,22 +195,26 @@
           <span>Payment & Tax Summary</span>
           <span class="text-xs font-semibold text-slate-500">All amounts in INR (₹)</span>
         </h3>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-          <div class="bg-slate-50 p-2.5 rounded-lg border border-slate-200">
-            <span class="text-slate-500 block">Total Net Wt:</span>
-            <span id="sumNetWeight" class="text-sm font-bold text-slate-800">0.000 g</span>
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-2.5 text-xs">
+          <div class="bg-slate-50 p-2 rounded-lg border border-slate-200">
+            <span class="text-slate-500 block text-[10px]">Total Net Wt:</span>
+            <span id="sumNetWeight" class="text-xs font-bold text-slate-800">0.000 g</span>
           </div>
-          <div class="bg-slate-50 p-2.5 rounded-lg border border-slate-200">
-            <span class="text-slate-500 block">Items Subtotal:</span>
-            <span id="sumSubtotal" class="text-sm font-bold text-slate-800">₹0</span>
+          <div class="bg-slate-50 p-2 rounded-lg border border-slate-200">
+            <span class="text-slate-500 block text-[10px]">Subtotal:</span>
+            <span id="sumSubtotal" class="text-xs font-bold text-slate-800">₹0</span>
           </div>
-          <div class="bg-slate-50 p-2.5 rounded-lg border border-slate-200">
-            <span class="text-slate-500 block">Old Gold Deduction:</span>
-            <span id="sumOldDeduction" class="text-sm font-bold text-red-600">- ₹0</span>
+          <div class="bg-slate-50 p-2 rounded-lg border border-slate-200">
+            <span class="text-slate-500 block text-[10px]">Old Gold Less:</span>
+            <span id="sumOldDeduction" class="text-xs font-bold text-red-600">- ₹0</span>
           </div>
-          <div class="bg-slate-50 p-2.5 rounded-lg border border-slate-200">
-            <span class="text-slate-500 block">GST 3% (1.5% CGST + 1.5% SGST):</span>
-            <span id="sumGst" class="text-sm font-bold text-slate-800">₹0</span>
+          <div class="bg-slate-50 p-2 rounded-lg border border-slate-200">
+            <span class="text-slate-500 block text-[10px]">Discount:</span>
+            <span id="sumDiscount" class="text-xs font-bold text-emerald-600">- ₹0</span>
+          </div>
+          <div class="bg-slate-50 p-2 rounded-lg border border-slate-200">
+            <span class="text-slate-500 block text-[10px]">GST 3%:</span>
+            <span id="sumGst" class="text-xs font-bold text-slate-800">₹0</span>
           </div>
         </div>
 
@@ -219,7 +226,7 @@
           <span id="sumGrandTotal" class="text-2xl md:text-3xl font-extrabold text-slate-900">₹0</span>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-2">
           <div>
             <label class="block text-xs font-semibold text-slate-600 mb-1">Payment Mode</label>
             <select id="paymentMode" class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-amber-500">
@@ -229,6 +236,10 @@
               <option value="Bank NEFT / RTGS">Bank NEFT / RTGS</option>
               <option value="Old Gold Exchange + Cash">Old Gold Exchange + Cash</option>
             </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Discount (₹)</label>
+            <input type="number" id="amtDiscount" placeholder="0" class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-amber-500 text-emerald-700 font-semibold">
           </div>
           <div>
             <label class="block text-xs font-semibold text-slate-600 mb-1">Amount Paid (₹)</label>
@@ -501,7 +512,7 @@
         staff: "",
         items: [],
         oldExchange: { enabled: false, grossWt: 0, purityPct: 90, rate: 6800, total: 0 },
-        payment: { subtotal: 0, oldDeduction: 0, gst: 0, grandTotal: 0, mode: "UPI / QR Code", paid: 0, balance: 0 }
+        payment: { subtotal: 0, oldDeduction: 0, discount: 0, gst: 0, grandTotal: 0, mode: "UPI / QR Code", paid: 0, balance: 0 }
       },
       printTemplate: "thermal",
       records: []
@@ -538,10 +549,12 @@
       sumNetWeight: document.getElementById('sumNetWeight'),
       sumSubtotal: document.getElementById('sumSubtotal'),
       sumOldDeduction: document.getElementById('sumOldDeduction'),
+      sumDiscount: document.getElementById('sumDiscount'),
       sumGst: document.getElementById('sumGst'),
       sumGrandTotal: document.getElementById('sumGrandTotal'),
       amountInWords: document.getElementById('amountInWords'),
       paymentMode: document.getElementById('paymentMode'),
+      amtDiscount: document.getElementById('amtDiscount'),
       amtPaid: document.getElementById('amtPaid'),
       amtBalance: document.getElementById('amtBalance'),
       
@@ -679,6 +692,7 @@
           oldPurityPct: dom.oldPurityPct.value,
           oldRate: dom.oldRate.value,
           paymentMode: dom.paymentMode.value,
+          amtDiscount: dom.amtDiscount.value,
           amtPaid: dom.amtPaid.value
         };
         localStorage.setItem('asj_active_draft', JSON.stringify(draft));
@@ -712,6 +726,7 @@
           dom.oldPurityPct.value = draft.oldPurityPct || '';
           dom.oldRate.value = draft.oldRate || '';
           dom.paymentMode.value = draft.paymentMode || 'UPI / QR Code';
+          dom.amtDiscount.value = draft.amtDiscount || '';
           dom.amtPaid.value = draft.amtPaid || '';
           return;
         }
@@ -867,7 +882,7 @@
             </div>
             <div>
               <label class="block text-[10px] font-semibold text-slate-500">Item Total (₹)</label>
-              <input type="text" readonly value="₹${Math.round(item.total).toLocaleString('en-IN')}" class="w-full border rounded px-2 py-1 bg-amber-50 font-bold text-slate-900">
+              <input type="text" id="itemTotal_${item.id}" readonly value="₹${Math.round(item.total).toLocaleString('en-IN')}" class="w-full border rounded px-2 py-1 bg-amber-50 font-bold text-slate-900">
             </div>
           </div>
         `;
@@ -899,7 +914,7 @@
       }
     }
 
-    // CALCULATION LOGIC - MAKING AS PERCENTAGE (%)
+    // CALCULATION LOGIC - MAKING AS PERCENTAGE (%) & LIVE ITEM TOTAL UPDATES
     function recalculateAll() {
       let totalGross = 0;
       let totalNet = 0;
@@ -911,6 +926,12 @@
         // Making charge as % of metal amount: Metal Value * (Making % / 100)
         it.makingTotal = metalAmt * ((it.makingPercent || 0) / 100);
         it.total = metalAmt + (it.stoneVal || 0) + it.makingTotal;
+
+        // LIVE UPDATE ITEM TOTAL IN DOM
+        const rowTotalEl = document.getElementById(`itemTotal_${it.id}`);
+        if (rowTotalEl) {
+          rowTotalEl.value = '₹' + Math.round(it.total).toLocaleString('en-IN');
+        }
 
         totalGross += (it.grossWt || 0);
         totalNet += it.netWt;
@@ -930,19 +951,27 @@
         dom.oldValuationTotal.value = '₹0';
       }
 
+      // 1. Taxable amount = Subtotal - Old Gold
       const taxableAmt = Math.max(0, itemsSubtotal - oldDeduction);
+      // 2. GST (3%) calculated on taxable amount
       const gst = taxableAmt * 0.03; // 3% GST (1.5% CGST + 1.5% SGST)
-      const grandTotal = Math.round(taxableAmt + gst);
+      const totalBeforeDiscount = taxableAmt + gst;
+      // 3. Discount subtracted from TOTAL AMOUNT (after tax)
+      const discount = parseFloat(dom.amtDiscount.value) || 0;
+      const grandTotal = Math.max(0, Math.round(totalBeforeDiscount - discount));
 
       AppState.currentInvoice.payment.subtotal = itemsSubtotal;
       AppState.currentInvoice.payment.oldDeduction = oldDeduction;
+      AppState.currentInvoice.payment.taxableAmt = taxableAmt;
       AppState.currentInvoice.payment.gst = gst;
+      AppState.currentInvoice.payment.discount = discount;
       AppState.currentInvoice.payment.grandTotal = grandTotal;
 
       dom.sumNetWeight.textContent = totalNet.toFixed(3) + ' g';
       dom.sumSubtotal.textContent = '₹' + Math.round(itemsSubtotal).toLocaleString('en-IN');
       dom.sumOldDeduction.textContent = '- ₹' + Math.round(oldDeduction).toLocaleString('en-IN');
       dom.sumGst.textContent = '₹' + Math.round(gst).toLocaleString('en-IN');
+      dom.sumDiscount.textContent = '- ₹' + Math.round(discount).toLocaleString('en-IN');
       dom.sumGrandTotal.textContent = '₹' + grandTotal.toLocaleString('en-IN');
       dom.amountInWords.textContent = numberToWordsIndian(grandTotal) + ' Only';
 
@@ -1046,6 +1075,7 @@
             <div class="flex justify-between"><span>Subtotal:</span><span>₹${Math.round(inv.payment.subtotal).toLocaleString('en-IN')}</span></div>
             ${inv.payment.oldDeduction > 0 ? `<div class="flex justify-between text-red-600 font-bold"><span>Old Gold Less:</span><span>- ₹${Math.round(inv.payment.oldDeduction).toLocaleString('en-IN')}</span></div>` : ''}
             <div class="flex justify-between"><span>GST (3%):</span><span>₹${Math.round(inv.payment.gst).toLocaleString('en-IN')}</span></div>
+            ${inv.payment.discount > 0 ? `<div class="flex justify-between text-emerald-700 font-bold"><span>Discount:</span><span>- ₹${Math.round(inv.payment.discount).toLocaleString('en-IN')}</span></div>` : ''}
             <div class="flex justify-between font-extrabold text-xs pt-1 border-t border-slate-800">
               <span>GRAND TOTAL:</span>
               <span>₹${inv.payment.grandTotal.toLocaleString('en-IN')}</span>
@@ -1119,6 +1149,7 @@
               ${inv.payment.oldDeduction > 0 ? `<div class="flex justify-between text-red-600 font-bold"><span>Old Metal Exchange:</span><span class="font-mono">- ₹${Math.round(inv.payment.oldDeduction).toLocaleString('en-IN')}</span></div>` : ''}
               <div class="flex justify-between"><span class="text-slate-500">CGST (1.5%):</span><span class="font-mono">₹${(Math.round(inv.payment.gst)/2).toLocaleString('en-IN')}</span></div>
               <div class="flex justify-between"><span class="text-slate-500">SGST (1.5%):</span><span class="font-mono">₹${(Math.round(inv.payment.gst)/2).toLocaleString('en-IN')}</span></div>
+              ${inv.payment.discount > 0 ? `<div class="flex justify-between text-emerald-700 font-bold"><span>Special Discount:</span><span class="font-mono">- ₹${Math.round(inv.payment.discount).toLocaleString('en-IN')}</span></div>` : ''}
               <div class="flex justify-between font-extrabold text-sm border-t border-slate-900 pt-1 text-slate-950">
                 <span>GRAND TOTAL:</span>
                 <span class="font-mono">₹${inv.payment.grandTotal.toLocaleString('en-IN')}</span>
@@ -1392,6 +1423,7 @@ _${AppState.shopSettings.terms}_`;
       dom.oldGrossWt.addEventListener('input', () => { recalculateAll(); saveActiveDraft(); });
       dom.oldPurityPct.addEventListener('input', () => { recalculateAll(); saveActiveDraft(); });
       dom.oldRate.addEventListener('input', () => { recalculateAll(); saveActiveDraft(); });
+      dom.amtDiscount.addEventListener('input', () => { recalculateAll(); saveActiveDraft(); });
       dom.amtPaid.addEventListener('input', () => { recalculateAll(); saveActiveDraft(); });
 
       dom.btnSaveBill.addEventListener('click', saveCurrentBill);
@@ -1406,6 +1438,7 @@ _${AppState.shopSettings.terms}_`;
         dom.custPan.value = '';
         dom.custAddress.value = AppState.shopSettings.defaultCity || '';
         dom.staffName.value = '';
+        dom.amtDiscount.value = '';
         initDefaultItem();
         recalculateAll();
         saveActiveDraft();
